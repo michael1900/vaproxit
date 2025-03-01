@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: stremio-vavoo-addon
+    env: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 10000
+    scaling:
+      minInstances: 1
+      maxInstances: 1
