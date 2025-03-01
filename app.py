@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import requests
 from flask import Flask, request, Response, jsonify, redirect
 from flask_cors import CORS
@@ -23,6 +24,56 @@ DEFAULT_HEADERS = {
     "Origin": "https://vavoo.to"
 }
 
+# Cache dei canali
+channels_cache = []
+cache_timestamp = 0
+CACHE_DURATION = 3600  # 1 ora in secondi
+
+# Funzione per caricare e filtrare i canali italiani da vavoo.to
+def load_italian_channels():
+    global channels_cache, cache_timestamp
+    current_time = time.time()
+    
+    # Usa la cache se disponibile e non scaduta
+    if channels_cache and current_time - cache_timestamp < CACHE_DURATION:
+        return channels_cache
+    
+    try:
+        response = requests.get(VAVOO_API_URL, headers=DEFAULT_HEADERS)
+        response.raise_for_status()
+        
+        all_channels = response.json()
+        italian_channels = [ch for ch in all_channels if ch.get("country") == "Italy"]
+        
+        # Aggiorna la cache
+        channels_cache = italian_channels
+        cache_timestamp = current_time
+        
+        return italian_channels
+    except Exception as e:
+        print(f"Errore nel caricamento dei canali: {str(e)}")
+        return channels_cache if channels_cache else []
+
+def get_channel_genre(channel_name):
+    """Determina il genere del canale in base al nome"""
+    channel_name = channel_name.lower()
+    
+    genres = {
+        "SPORT": ["sport", "calcio", "football", "tennis", "basket", "motogp", "f1", "golf"],
+        "NEWS": ["news", "tg", "24", "meteo", "giornale", "notizie"],
+        "KIDS": ["kids", "bambini", "cartoon", "disney", "nick", "boing", "junior"],
+        "MOVIES": ["cinema", "film", "movie", "premium", "comedy"],
+        "DOCUMENTARIES": ["discovery", "history", "national", "geo", "natura", "science"],
+        "MUSIC": ["music", "mtv", "vh1", "radio", "hit", "rock"]
+    }
+    
+    for genre, keywords in genres.items():
+        for keyword in keywords:
+            if keyword in channel_name:
+                return genre
+    
+    return "GENERAL"
+
 # Endpoint per il manifest dell'addon
 @app.route('/', methods=['GET'])
 def addon_manifest():
@@ -40,14 +91,14 @@ def addon_manifest():
         "version": ADDON_VERSION,
         "name": ADDON_NAME,
         "description": "Canali italiani da vavoo.to",
-        "resources": ["catalog", "meta", "stream", "search", "video"],
+        "resources": ["catalog", "meta", "stream"],
         "types": ["tv"],
         "catalogs": [
             {
                 "type": "tv", 
                 "id": "vavoo_italy",
                 "name": "Vavoo.to Italia",
-                "extra": [{"name": "skip", "options": ["0", "100", "200"]}]
+                "extra": [{"name": "search", "isRequired": False}]
             }
         ],
         "behaviorHints": {
@@ -85,7 +136,7 @@ def manifest_json():
                 "type": "tv", 
                 "id": "vavoo_italy",
                 "name": "Vavoo.to Italia",
-                "extra": [{"name": "skip", "options": ["0", "100", "200"]}]
+                "extra": [{"name": "search", "isRequired": False}]
             }
         ],
         "behaviorHints": {
@@ -102,20 +153,6 @@ def manifest_json():
     response.headers['Content-Type'] = 'application/json'
     return response
 
-# Funzione per caricare e filtrare i canali italiani da vavoo.to
-def load_italian_channels():
-    try:
-        response = requests.get(VAVOO_API_URL, headers=DEFAULT_HEADERS)
-        response.raise_for_status()
-        
-        all_channels = response.json()
-        italian_channels = [ch for ch in all_channels if ch.get("country") == "Italy"]
-        
-        return italian_channels
-    except Exception as e:
-        print(f"Errore nel caricamento dei canali: {str(e)}")
-        return []
-
 # Endpoint per il catalogo (formato standard Stremio)
 @app.route('/catalog/<type>/<id>.json', methods=['GET'])
 def catalog(type, id):
@@ -123,20 +160,31 @@ def catalog(type, id):
     if type != "tv" or id != "vavoo_italy":
         return jsonify({"metas": []})
         
+    search = request.args.get('search', '')
     skip = int(request.args.get('skip', 0))
     
     channels = load_italian_channels()
-    channels = channels[skip:skip+100]  # Paginazione
+    
+    # Filtra per la ricerca se specificata
+    if search:
+        search = search.lower()
+        channels = [ch for ch in channels if search in ch["name"].lower()]
+    
+    # Applica paginazione
+    channels = channels[skip:skip+100]
     
     metas = []
     for channel in channels:
+        genre = get_channel_genre(channel["name"])
         metas.append({
             "id": str(channel["id"]),
             "type": "tv",
             "name": channel["name"],
+            "genres": [genre],
             "poster": f"https://via.placeholder.com/300x450/0000FF/FFFFFF?text={quote(channel['name'])}",
-            "posterShape": "regular",
-            "background": f"https://via.placeholder.com/1280x720/000080/FFFFFF?text={quote(channel['name'])}"
+            "posterShape": "square",
+            "background": f"https://via.placeholder.com/1280x720/000080/FFFFFF?text={quote(channel['name'])}",
+            "logo": f"https://via.placeholder.com/300x300/0000FF/FFFFFF?text={quote(channel['name'])}"
         })
     
     return jsonify({"metas": metas})
@@ -146,34 +194,27 @@ def catalog(type, id):
 def meta(type, channel_id):
     # Controlliamo che il tipo sia supportato
     if type != "tv":
-        return jsonify({"error": "Tipo non supportato"}), 404
+        return jsonify({"meta": None})
         
     channels = load_italian_channels()
     channel = next((ch for ch in channels if str(ch["id"]) == channel_id), None)
     
     if not channel:
-        return jsonify({"error": "Canale non trovato"}), 404
+        return jsonify({"meta": None})
     
-    meta = {
-        "meta": {
-            "id": str(channel["id"]),
-            "type": "tv",
-            "name": channel["name"],
-            "poster": f"https://via.placeholder.com/300x450/0000FF/FFFFFF?text={quote(channel['name'])}",
-            "posterShape": "regular",
-            "background": f"https://via.placeholder.com/1280x720/000080/FFFFFF?text={quote(channel['name'])}",
-            "videos": [
-                {
-                    "id": str(channel["id"]),
-                    "title": channel["name"],
-                    "released": "Live Stream",
-                    "available": True
-                }
-            ]
-        }
+    genre = get_channel_genre(channel["name"])
+    meta_obj = {
+        "id": str(channel["id"]),
+        "type": "tv",
+        "name": channel["name"],
+        "genres": [genre],
+        "poster": f"https://via.placeholder.com/300x450/0000FF/FFFFFF?text={quote(channel['name'])}",
+        "posterShape": "square",
+        "background": f"https://via.placeholder.com/1280x720/000080/FFFFFF?text={quote(channel['name'])}",
+        "logo": f"https://via.placeholder.com/300x300/0000FF/FFFFFF?text={quote(channel['name'])}"
     }
     
-    return jsonify(meta)
+    return jsonify({"meta": meta_obj})
 
 # Endpoint per lo stream (formato standard Stremio)
 @app.route('/stream/<type>/<channel_id>.json', methods=['GET'])
@@ -197,12 +238,16 @@ def stream(type, channel_id):
     headers_str = "&".join([f"header_{quote(k)}={quote(v)}" for k, v in DEFAULT_HEADERS.items()])
     proxied_url = f"{base_url}/proxy/m3u?url={quote(stream_url)}&{headers_str}"
     
+    channels = load_italian_channels()
+    channel = next((ch for ch in channels if str(ch["id"]) == channel_id), None)
+    channel_name = channel["name"] if channel else "Unknown"
+    
     # Restituisci l'oggetto stream per Stremio
     return jsonify({
         "streams": [
             {
                 "url": proxied_url,
-                "title": "Vavoo.to Stream",
+                "title": f"{channel_name} - Vavoo.to Stream",
                 "name": "Vavoo.to"
             }
         ]
@@ -321,82 +366,26 @@ def install_instructions():
     
     return html
 
-# Aggiungiamo anche un endpoint per i video
-@app.route('/video/<type>/<video_id>.json', methods=['GET'])
-def video(type, video_id):
-    # Controlliamo che il tipo sia supportato
-    if type != "tv":
-        return jsonify({"error": "Tipo non supportato"}), 404
-        
-    channels = load_italian_channels()
-    channel = next((ch for ch in channels if str(ch["id"]) == video_id), None)
-    
-    if not channel:
-        return jsonify({"error": "Video non trovato"}), 404
-    
-    # Costruisci l'URL dello stream
-    stream_url = VAVOO_STREAM_BASE_URL.format(id=video_id)
-    
-    # Costruisci l'URL del proxy con HTTPS
-    if request.headers.get('X-Forwarded-Proto') == 'https':
-        base_url = 'https://' + request.host
-    else:
-        base_url = request.url_root.rstrip('/')
-        # Se non siamo sicuri che sia HTTPS, forziamo HTTPS per gli ambienti di produzione
-        if not base_url.startswith('http://localhost') and not base_url.startswith('https://'):
-            base_url = 'https://' + request.host
-            
-    headers_str = "&".join([f"header_{quote(k)}={quote(v)}" for k, v in DEFAULT_HEADERS.items()])
-    proxied_url = f"{base_url}/proxy/m3u?url={quote(stream_url)}&{headers_str}"
-    
-    video_data = {
-        "id": str(channel["id"]),
-        "title": channel["name"],
-        "released": "Live Stream",
-        "streams": [
-            {
-                "url": proxied_url,
-                "title": "Vavoo.to Stream",
-                "name": "Vavoo.to"
-            }
-        ]
-    }
-    
-    return jsonify(video_data)
-
-# Endpoint per la ricerca
-@app.route('/search/<type>/<query>.json', methods=['GET'])
-def search(type, query):
-    # Controlliamo che il tipo sia supportato
-    if type != "tv":
-        return jsonify({"metas": []})
-        
-    channels = load_italian_channels()
-    
-    # Ricerca case-insensitive
-    query = query.lower()
-    results = []
-    
-    for channel in channels:
-        if query in channel["name"].lower():
-            results.append({
-                "id": str(channel["id"]),
-                "type": "tv",
-                "name": channel["name"],
-                "poster": f"https://via.placeholder.com/300x450/0000FF/FFFFFF?text={quote(channel['name'])}",
-                "posterShape": "regular",
-                "background": f"https://via.placeholder.com/1280x720/000080/FFFFFF?text={quote(channel['name'])}"
-            })
-    
-    return jsonify({"metas": results})
-
 @app.route('/<path:invalid_path>')
 def catch_all(invalid_path):
     """Gestisci percorsi non validi reindirizzando alla radice"""
-    if invalid_path != 'manifest.json' and not invalid_path.startswith('catalog/') and not invalid_path.startswith('meta/') and not invalid_path.startswith('stream/') and not invalid_path.startswith('proxy/') and not invalid_path.startswith('search/') and not invalid_path.startswith('video/'):
+    if invalid_path != 'manifest.json' and not invalid_path.startswith('catalog/') and not invalid_path.startswith('meta/') and not invalid_path.startswith('stream/') and not invalid_path.startswith('proxy/'):
         return redirect('/')
     else:
         return f"Endpoint non valido: {invalid_path}", 404
+
+@app.route('/status')
+def status():
+    """Endpoint per verificare lo stato dell'addon"""
+    channels = load_italian_channels()
+    
+    return {
+        "status": "online",
+        "channels_count": len(channels),
+        "cache_timestamp": cache_timestamp,
+        "cache_age_seconds": time.time() - cache_timestamp if cache_timestamp > 0 else 0,
+        "version": ADDON_VERSION
+    }
 
 if __name__ == '__main__':
     # Configurazione per l'ambiente di produzione
