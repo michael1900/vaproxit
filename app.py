@@ -29,6 +29,52 @@ channels_cache = []
 cache_timestamp = 0
 CACHE_DURATION = 3600  # 1 ora in secondi
 
+# Carica il file JSON dei loghi
+def load_logos():
+    try:
+        # Percorso al file JSON nella stessa directory dello script
+        logos_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'canali_con_loghi_finale.json')
+        
+        with open(logos_file_path, 'r', encoding='utf-8') as file:
+            logos_data = json.load(file)
+        
+        # Crea un dizionario per un accesso più veloce
+        logos_dict = {}
+        for channel in logos_data:
+            if "name" in channel:
+                # Normalizza il nome del canale (rimuovi spazi extra, converti in minuscolo)
+                normalized_name = channel["name"].strip().lower()
+                logos_dict[normalized_name] = channel.get("logo", "")
+        
+        return logos_dict
+    except Exception as e:
+        print(f"Errore nel caricamento dei loghi: {str(e)}")
+        return {}
+
+# Carica i loghi all'avvio dell'applicazione
+channel_logos = load_logos()
+
+# Funzione per trovare il logo corrispondente a un canale
+def find_logo_for_channel(channel_name):
+    # Normalizza il nome del canale
+    normalized_name = channel_name.strip().lower()
+    
+    # Cerca una corrispondenza esatta
+    if normalized_name in channel_logos:
+        return channel_logos[normalized_name]
+    
+    # Cerca corrispondenze parziali (un canale potrebbe avere il nome leggermente diverso)
+    for name, logo in channel_logos.items():
+        # Rimuovi i suffissi (6) o (7) per il confronto
+        base_name = ' '.join(normalized_name.split(' ')[:-1]) if '(' in normalized_name else normalized_name
+        base_logo_name = ' '.join(name.split(' ')[:-1]) if '(' in name else name
+        
+        if base_name == base_logo_name or base_name in name or name in base_name:
+            return logo
+    
+    # Restituisci un URL di placeholder se non è stato trovato alcun logo
+    return f"https://via.placeholder.com/300x300/0000FF/FFFFFF?text={quote(channel_name)}"
+
 # Funzione per caricare e filtrare i canali italiani da vavoo.to
 def load_italian_channels():
     global channels_cache, cache_timestamp
@@ -167,15 +213,18 @@ def get_catalog_response(type, id, search, skip):
     metas = []
     for channel in channels:
         genre = get_channel_genre(channel["name"])
+        # Trova il logo appropriato per il canale
+        logo_url = find_logo_for_channel(channel["name"])
+        
         metas.append({
             "id": str(channel["id"]),
             "type": "tv",
             "name": channel["name"],
             "genres": [genre],
-            "poster": f"https://via.placeholder.com/300x450/0000FF/FFFFFF?text={quote(channel['name'])}",
+            "poster": logo_url,  # Usa il logo del canale come poster
             "posterShape": "square",
             "background": f"https://via.placeholder.com/1280x720/000080/FFFFFF?text={quote(channel['name'])}",
-            "logo": f"https://via.placeholder.com/300x300/0000FF/FFFFFF?text={quote(channel['name'])}"
+            "logo": logo_url  # Usa lo stesso logo come icona del canale
         })
     
     return jsonify({"metas": metas})
@@ -194,15 +243,17 @@ def meta(type, channel_id):
         return jsonify({"meta": None})
     
     genre = get_channel_genre(channel["name"])
+    logo_url = find_logo_for_channel(channel["name"])
+    
     meta_obj = {
         "id": str(channel["id"]),
         "type": "tv",
         "name": channel["name"],
         "genres": [genre],
-        "poster": f"https://via.placeholder.com/300x450/0000FF/FFFFFF?text={quote(channel['name'])}",
+        "poster": logo_url,
         "posterShape": "square",
         "background": f"https://via.placeholder.com/1280x720/000080/FFFFFF?text={quote(channel['name'])}",
-        "logo": f"https://via.placeholder.com/300x300/0000FF/FFFFFF?text={quote(channel['name'])}"
+        "logo": logo_url
     }
     
     return jsonify({"meta": meta_obj})
@@ -362,9 +413,11 @@ def status():
     """Endpoint per verificare lo stato dell'addon"""
     channels = load_italian_channels()
     
+    # Aggiungi anche lo stato del caricamento dei loghi
     return jsonify({
         "status": "online",
         "channels_count": len(channels),
+        "logos_count": len(channel_logos),
         "cache_timestamp": cache_timestamp,
         "cache_age_seconds": time.time() - cache_timestamp if cache_timestamp > 0 else 0,
         "version": ADDON_VERSION
