@@ -74,44 +74,6 @@ def get_channel_genre(channel_name):
     
     return "GENERAL"
 
-# Endpoint per il manifest dell'addon
-@app.route('/', methods=['GET'])
-def addon_manifest():
-    # Assicuriamoci che l'URL base usi HTTPS
-    if request.headers.get('X-Forwarded-Proto') == 'https':
-        base_url = 'https://' + request.host
-    else:
-        base_url = request.url_root.rstrip('/')
-        # Se non siamo sicuri che sia HTTPS, forziamo HTTPS per gli ambienti di produzione
-        if not base_url.startswith('http://localhost') and not base_url.startswith('https://'):
-            base_url = 'https://' + request.host
-    
-    manifest = {
-        "id": ADDON_ID,
-        "version": ADDON_VERSION,
-        "name": ADDON_NAME,
-        "description": "Canali italiani da vavoo.to",
-        "resources": ["catalog", "meta", "stream"],
-        "types": ["tv"],
-        "catalogs": [
-            {
-                "type": "tv", 
-                "id": "vavoo_italy",
-                "name": "Vavoo.to Italia",
-                "extra": [{"name": "search", "isRequired": False}]
-            }
-        ],
-        "behaviorHints": {
-            "configurable": False,
-            "configurationRequired": False
-        },
-        "logo": "https://vavoo.to/favicon.ico",
-        "background": "https://via.placeholder.com/1280x720/000080/FFFFFF?text=Vavoo.to%20Italia",
-        "contactEmail": "example@example.com"  # Sostituire con email reale se necessario
-    }
-    
-    return jsonify(manifest)
-
 # Supporto per il manifest.json specifico (formato richiesto da Stremio)
 @app.route('/manifest.json', methods=['GET'])
 def manifest_json():
@@ -153,6 +115,11 @@ def manifest_json():
     response.headers['Content-Type'] = 'application/json'
     return response
 
+@app.route('/', methods=['GET'])
+def root():
+    """Reindirizzamento alla pagina di installazione"""
+    return redirect('/install')
+
 # Endpoint per il catalogo (formato standard Stremio)
 @app.route('/catalog/<type>/<id>.json', methods=['GET'])
 def catalog(type, id):
@@ -163,6 +130,30 @@ def catalog(type, id):
     search = request.args.get('search', '')
     skip = int(request.args.get('skip', 0))
     
+    return get_catalog_response(type, id, search, skip)
+
+# Endpoint per il catalogo con parametro search nel percorso (formato Stremio)
+@app.route('/catalog/<type>/<id>/<extra>.json', methods=['GET'])
+def catalog_with_extra(type, id, extra):
+    # Controlliamo che il tipo e id corrispondano a quelli supportati
+    if type != "tv" or id != "vavoo_italy":
+        return jsonify({"metas": []})
+    
+    search = ""
+    skip = 0
+    
+    # Parsing dei parametri extra
+    if extra.startswith("search="):
+        search = extra.split("=", 1)[1]
+    elif extra.startswith("skip="):
+        try:
+            skip = int(extra.split("=", 1)[1])
+        except ValueError:
+            skip = 0
+    
+    return get_catalog_response(type, id, search, skip)
+
+def get_catalog_response(type, id, search, skip):
     channels = load_italian_channels()
     
     # Filtra per la ricerca se specificata
@@ -366,26 +357,23 @@ def install_instructions():
     
     return html
 
-@app.route('/<path:invalid_path>')
-def catch_all(invalid_path):
-    """Gestisci percorsi non validi reindirizzando alla radice"""
-    if invalid_path != 'manifest.json' and not invalid_path.startswith('catalog/') and not invalid_path.startswith('meta/') and not invalid_path.startswith('stream/') and not invalid_path.startswith('proxy/'):
-        return redirect('/')
-    else:
-        return f"Endpoint non valido: {invalid_path}", 404
-
-@app.route('/status')
+@app.route('/status.json')
 def status():
     """Endpoint per verificare lo stato dell'addon"""
     channels = load_italian_channels()
     
-    return {
+    return jsonify({
         "status": "online",
         "channels_count": len(channels),
         "cache_timestamp": cache_timestamp,
         "cache_age_seconds": time.time() - cache_timestamp if cache_timestamp > 0 else 0,
         "version": ADDON_VERSION
-    }
+    })
+
+@app.route('/<path:invalid_path>')
+def catch_all(invalid_path):
+    """Gestisci percorsi non validi reindirizzando alla pagina di installazione"""
+    return redirect('/install')
 
 if __name__ == '__main__':
     # Configurazione per l'ambiente di produzione
