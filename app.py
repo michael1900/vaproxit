@@ -167,7 +167,7 @@ def meta(type, channel_id):
                     "id": str(channel["id"]),
                     "title": channel["name"],
                     "released": "Live Stream",
-                    "available": true
+                    "available": True
                 }
             ]
         }
