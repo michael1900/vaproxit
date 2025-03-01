@@ -24,7 +24,14 @@ DEFAULT_HEADERS = {
 # Endpoint per il manifest dell'addon
 @app.route('/', methods=['GET'])
 def addon_manifest():
-    base_url = request.url_root.rstrip('/')
+    # Assicuriamoci che l'URL base usi HTTPS
+    if request.headers.get('X-Forwarded-Proto') == 'https':
+        base_url = 'https://' + request.host
+    else:
+        base_url = request.url_root.rstrip('/')
+        # Se non siamo sicuri che sia HTTPS, forziamo HTTPS per gli ambienti di produzione
+        if not base_url.startswith('http://localhost') and not base_url.startswith('https://'):
+            base_url = 'https://' + request.host
     
     manifest = {
         "id": ADDON_ID,
@@ -130,8 +137,14 @@ def stream(type, channel_id):
     # Costruisci l'URL dello stream
     stream_url = VAVOO_STREAM_BASE_URL.format(id=channel_id)
     
-    # Costruisci l'URL del proxy
-    base_url = request.url_root.rstrip('/')
+    # Costruisci l'URL del proxy con HTTPS
+    if request.headers.get('X-Forwarded-Proto') == 'https':
+        base_url = 'https://' + request.host
+    else:
+        base_url = request.url_root.rstrip('/')
+        # Se non siamo sicuri che sia HTTPS, forziamo HTTPS per gli ambienti di produzione
+        if not base_url.startswith('http://localhost') and not base_url.startswith('https://'):
+            base_url = 'https://' + request.host
     headers_str = "&".join([f"header_{quote(k)}={quote(v)}" for k, v in DEFAULT_HEADERS.items()])
     proxied_url = f"{base_url}/proxy/m3u?url={quote(stream_url)}&{headers_str}"
     
@@ -222,10 +235,39 @@ def proxy_ts():
     except requests.RequestException as e:
         return f"Errore durante il download del segmento TS: {str(e)}", 500
 
-# Supporto per il manifest.json specifico
+# Supporto per il manifest.json specifico (formato richiesto da Stremio)
 @app.route('/manifest.json', methods=['GET'])
 def manifest_json():
-    return addon_manifest()
+    base_url = request.url_root.rstrip('/')
+    
+    manifest = {
+        "id": ADDON_ID,
+        "version": ADDON_VERSION,
+        "name": ADDON_NAME,
+        "description": "Canali italiani da vavoo.to",
+        "resources": ["catalog", "meta", "stream"],
+        "types": ["tv"],
+        "catalogs": [
+            {
+                "type": "tv", 
+                "id": "vavoo_italy",
+                "name": "Vavoo.to Italia",
+                "extra": [{"name": "skip", "options": ["0", "100", "200"]}]
+            }
+        ],
+        "behaviorHints": {
+            "configurable": False,
+            "configurationRequired": False
+        },
+        "logo": "https://vavoo.to/favicon.ico",
+        "background": "https://via.placeholder.com/1280x720/000080/FFFFFF?text=Vavoo.to%20Italia",
+        "contactEmail": "example@example.com"  # Sostituire con email reale se necessario
+    }
+    
+    # Assicuriamoci che i content-type siano corretti
+    response = jsonify(manifest)
+    response.headers['Content-Type'] = 'application/json'
+    return response
 
 # Istruzioni per l'installazione dell'addon su Stremio
 @app.route('/install')
