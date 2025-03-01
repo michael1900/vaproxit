@@ -40,7 +40,7 @@ def addon_manifest():
         "version": ADDON_VERSION,
         "name": ADDON_NAME,
         "description": "Canali italiani da vavoo.to",
-        "resources": ["catalog", "meta", "stream"],
+        "resources": ["catalog", "meta", "stream", "search"],
         "types": ["tv"],
         "catalogs": [
             {
@@ -319,10 +319,36 @@ def install_instructions():
     
     return html
 
+# Endpoint per la ricerca
+@app.route('/search/<type>/<query>.json', methods=['GET'])
+def search(type, query):
+    # Controlliamo che il tipo sia supportato
+    if type != "tv":
+        return jsonify({"metas": []})
+        
+    channels = load_italian_channels()
+    
+    # Ricerca case-insensitive
+    query = query.lower()
+    results = []
+    
+    for channel in channels:
+        if query in channel["name"].lower():
+            results.append({
+                "id": str(channel["id"]),
+                "type": "tv",
+                "name": channel["name"],
+                "poster": f"https://via.placeholder.com/300x450/0000FF/FFFFFF?text={quote(channel['name'])}",
+                "posterShape": "regular",
+                "background": f"https://via.placeholder.com/1280x720/000080/FFFFFF?text={quote(channel['name'])}"
+            })
+    
+    return jsonify({"metas": results})
+
 @app.route('/<path:invalid_path>')
 def catch_all(invalid_path):
     """Gestisci percorsi non validi reindirizzando alla radice"""
-    if invalid_path != 'manifest.json' and not invalid_path.startswith('catalog/') and not invalid_path.startswith('meta/') and not invalid_path.startswith('stream/') and not invalid_path.startswith('proxy/'):
+    if invalid_path != 'manifest.json' and not invalid_path.startswith('catalog/') and not invalid_path.startswith('meta/') and not invalid_path.startswith('stream/') and not invalid_path.startswith('proxy/') and not invalid_path.startswith('search/'):
         return redirect('/')
     else:
         return f"Endpoint non valido: {invalid_path}", 404
