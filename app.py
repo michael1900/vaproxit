@@ -322,7 +322,7 @@ def install_instructions():
 @app.route('/<path:invalid_path>')
 def catch_all(invalid_path):
     """Gestisci percorsi non validi reindirizzando alla radice"""
-    if invalid_path != 'manifest.json' and not invalid_path.startswith('catalog/') and not invalid_path.startswith('meta/') and not invalid_path.startswith('stream/'):
+    if invalid_path != 'manifest.json' and not invalid_path.startswith('catalog/') and not invalid_path.startswith('meta/') and not invalid_path.startswith('stream/') and not invalid_path.startswith('proxy/'):
         return redirect('/')
     else:
         return f"Endpoint non valido: {invalid_path}", 404
