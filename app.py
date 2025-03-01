@@ -40,7 +40,7 @@ def addon_manifest():
         "version": ADDON_VERSION,
         "name": ADDON_NAME,
         "description": "Canali italiani da vavoo.to",
-        "resources": ["catalog", "meta", "stream", "search"],
+        "resources": ["catalog", "meta", "stream", "search", "video"],
         "types": ["tv"],
         "catalogs": [
             {
@@ -155,20 +155,22 @@ def meta(type, channel_id):
         return jsonify({"error": "Canale non trovato"}), 404
     
     meta = {
-        "id": str(channel["id"]),
-        "type": "tv",
-        "name": channel["name"],
-        "poster": f"https://via.placeholder.com/300x450/0000FF/FFFFFF?text={quote(channel['name'])}",
-        "posterShape": "regular",
-        "background": f"https://via.placeholder.com/1280x720/000080/FFFFFF?text={quote(channel['name'])}",
-        "videos": [
-            {
-                "id": str(channel["id"]),
-                "title": channel["name"],
-                "released": "Live Stream",
-                "streams": [{"url": ""}]  # Stremio caricherà gli stream dall'endpoint stream
-            }
-        ]
+        "meta": {
+            "id": str(channel["id"]),
+            "type": "tv",
+            "name": channel["name"],
+            "poster": f"https://via.placeholder.com/300x450/0000FF/FFFFFF?text={quote(channel['name'])}",
+            "posterShape": "regular",
+            "background": f"https://via.placeholder.com/1280x720/000080/FFFFFF?text={quote(channel['name'])}",
+            "videos": [
+                {
+                    "id": str(channel["id"]),
+                    "title": channel["name"],
+                    "released": "Live Stream",
+                    "available": true
+                }
+            ]
+        }
     }
     
     return jsonify(meta)
@@ -319,6 +321,49 @@ def install_instructions():
     
     return html
 
+# Aggiungiamo anche un endpoint per i video
+@app.route('/video/<type>/<video_id>.json', methods=['GET'])
+def video(type, video_id):
+    # Controlliamo che il tipo sia supportato
+    if type != "tv":
+        return jsonify({"error": "Tipo non supportato"}), 404
+        
+    channels = load_italian_channels()
+    channel = next((ch for ch in channels if str(ch["id"]) == video_id), None)
+    
+    if not channel:
+        return jsonify({"error": "Video non trovato"}), 404
+    
+    # Costruisci l'URL dello stream
+    stream_url = VAVOO_STREAM_BASE_URL.format(id=video_id)
+    
+    # Costruisci l'URL del proxy con HTTPS
+    if request.headers.get('X-Forwarded-Proto') == 'https':
+        base_url = 'https://' + request.host
+    else:
+        base_url = request.url_root.rstrip('/')
+        # Se non siamo sicuri che sia HTTPS, forziamo HTTPS per gli ambienti di produzione
+        if not base_url.startswith('http://localhost') and not base_url.startswith('https://'):
+            base_url = 'https://' + request.host
+            
+    headers_str = "&".join([f"header_{quote(k)}={quote(v)}" for k, v in DEFAULT_HEADERS.items()])
+    proxied_url = f"{base_url}/proxy/m3u?url={quote(stream_url)}&{headers_str}"
+    
+    video_data = {
+        "id": str(channel["id"]),
+        "title": channel["name"],
+        "released": "Live Stream",
+        "streams": [
+            {
+                "url": proxied_url,
+                "title": "Vavoo.to Stream",
+                "name": "Vavoo.to"
+            }
+        ]
+    }
+    
+    return jsonify(video_data)
+
 # Endpoint per la ricerca
 @app.route('/search/<type>/<query>.json', methods=['GET'])
 def search(type, query):
@@ -348,7 +393,7 @@ def search(type, query):
 @app.route('/<path:invalid_path>')
 def catch_all(invalid_path):
     """Gestisci percorsi non validi reindirizzando alla radice"""
-    if invalid_path != 'manifest.json' and not invalid_path.startswith('catalog/') and not invalid_path.startswith('meta/') and not invalid_path.startswith('stream/') and not invalid_path.startswith('proxy/') and not invalid_path.startswith('search/'):
+    if invalid_path != 'manifest.json' and not invalid_path.startswith('catalog/') and not invalid_path.startswith('meta/') and not invalid_path.startswith('stream/') and not invalid_path.startswith('proxy/') and not invalid_path.startswith('search/') and not invalid_path.startswith('video/'):
         return redirect('/')
     else:
         return f"Endpoint non valido: {invalid_path}", 404
