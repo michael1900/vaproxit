@@ -30,7 +30,6 @@ cache_timestamp = 0
 CACHE_DURATION = 3600  # 1 ora in secondi
 
 # Carica il file JSON dei loghi
-# Carica il file JSON dei loghi
 def load_logos():
     try:
         # Percorso al file JSON nella stessa directory dello script
@@ -51,14 +50,20 @@ def load_logos():
         print(f"Errore nel caricamento dei loghi: {str(e)}")
         return {}
 
+# Carica i loghi all'avvio dell'applicazione
+channel_logos = load_logos()
+
 # Funzione per trovare il logo corrispondente a un canale con confronto diretto
 def find_logo_for_channel(channel_name):
+    # Accedi alla variabile globale
+    global channel_logos
+    
     # Cerca una corrispondenza esatta senza normalizzazione
     if channel_name in channel_logos:
         return channel_logos[channel_name]
     
     # Se non viene trovato un logo, restituisci un URL di placeholder
-    return f"https://via.placeholder.com/300x300/0000FF/FFFFFF?text={quote(channel_name)}&.png"
+    return f"https://via.placeholder.com/300x300/0000FF/FFFFFF?text={quote(channel_name)}"
 
 # Funzione per caricare e filtrare i canali italiani da vavoo.to
 def load_italian_channels():
@@ -369,7 +374,7 @@ def install_instructions():
         if not base_url.startswith('http://localhost') and not base_url.startswith('https://'):
             base_url = 'https://' + request.host
             
-    stremio_url = f"stremio://app.strem.io/addon/{base_url}/manifest.json"
+    stremio_url = f"stremio://{request.host}/manifest.json"
     
     html = f"""
     <!DOCTYPE html>
