@@ -29,14 +29,18 @@ channels_cache = []
 cache_timestamp = 0
 CACHE_DURATION = 3600  # 1 ora in secondi
 
-# Carica il file JSON dei loghi
+# Modifica la funzione load_logos per aggiungere debug
 def load_logos():
     try:
         # Percorso al file JSON nella stessa directory dello script
         logos_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'canali_con_loghi_finale.json')
         
+        print(f"[DEBUG] Tentativo di caricamento loghi da: {logos_file_path}")
+        
         with open(logos_file_path, 'r', encoding='utf-8') as file:
             logos_data = json.load(file)
+        
+        print(f"[DEBUG] Loghi caricati con successo: {len(logos_data)} elementi")
         
         # Crea un dizionario senza normalizzare i nomi
         logos_dict = {}
@@ -45,41 +49,68 @@ def load_logos():
                 # Usa il nome esatto del canale come chiave
                 logos_dict[channel["name"]] = channel.get("logo", "")
         
+        print(f"[DEBUG] Dizionario loghi creato con {len(logos_dict)} elementi")
+        
+        # Stampa alcuni esempi di nomi nel dizionario
+        print("[DEBUG] Esempi di nomi nel dizionario:")
+        examples = list(logos_dict.keys())[:5]
+        for name in examples:
+            print(f"[DEBUG]   - '{name}'")
+        
         return logos_dict
     except Exception as e:
-        print(f"Errore nel caricamento dei loghi: {str(e)}")
+        print(f"[DEBUG] ERRORE nel caricamento dei loghi: {str(e)}")
         return {}
 
 # Carica i loghi all'avvio dell'applicazione
 channel_logos = load_logos()
 
-# Funzione per trovare il logo corrispondente a un canale con confronto diretto
+# Modifica la funzione find_logo_for_channel per aggiungere debug
 def find_logo_for_channel(channel_name):
+    """
+    Trova il logo corrispondente a un canale con confronto diretto
+    """
     # Accedi alla variabile globale
     global channel_logos
     
+    print(f"[DEBUG] Cercando logo per: '{channel_name}'")
+    
     # Cerca una corrispondenza esatta senza normalizzazione
     if channel_name in channel_logos:
+        print(f"[DEBUG] Logo trovato per '{channel_name}'")
         return channel_logos[channel_name]
+    
+    print(f"[DEBUG] Logo NON trovato per '{channel_name}'")
     
     # Se non viene trovato un logo, restituisci un URL di placeholder
     return f"https://placehold.co/300x300?text={quote(channel_name)}&.jpg"
 
-# Funzione per caricare e filtrare i canali italiani da vavoo.to
+# Modifica la funzione load_italian_channels per aggiungere debug
 def load_italian_channels():
     global channels_cache, cache_timestamp
     current_time = time.time()
     
     # Usa la cache se disponibile e non scaduta
     if channels_cache and current_time - cache_timestamp < CACHE_DURATION:
+        print(f"[DEBUG] Usando channels_cache, {len(channels_cache)} canali")
         return channels_cache
     
     try:
+        print("[DEBUG] Caricamento canali da vavoo.to...")
         response = requests.get(VAVOO_API_URL, headers=DEFAULT_HEADERS)
         response.raise_for_status()
         
         all_channels = response.json()
+        print(f"[DEBUG] Canali totali caricati: {len(all_channels)}")
+        
         italian_channels = [ch for ch in all_channels if ch.get("country") == "Italy"]
+        print(f"[DEBUG] Canali italiani trovati: {len(italian_channels)}")
+        
+        # Stampa alcuni esempi di nomi di canali
+        print("[DEBUG] Esempi di nomi di canali:")
+        examples = [ch["name"] for ch in italian_channels[:5]]
+        for name in examples:
+            print(f"[DEBUG]   - '{name}'")
         
         # Aggiorna la cache
         channels_cache = italian_channels
@@ -87,7 +118,7 @@ def load_italian_channels():
         
         return italian_channels
     except Exception as e:
-        print(f"Errore nel caricamento dei canali: {str(e)}")
+        print(f"[DEBUG] ERRORE nel caricamento dei canali: {str(e)}")
         return channels_cache if channels_cache else []
 
 def get_channel_genre(channel_name):
@@ -411,6 +442,32 @@ def status():
         "cache_timestamp": cache_timestamp,
         "cache_age_seconds": time.time() - cache_timestamp if cache_timestamp > 0 else 0,
         "version": ADDON_VERSION
+    })
+
+# Aggiungiamo un endpoint di debug per visualizzare i loghi disponibili
+@app.route('/debug/logos')
+def debug_logos():
+    """Endpoint per verificare i loghi disponibili"""
+    global channel_logos
+    
+    # Ottieni primi 20 canali e verifica quali hanno loghi
+    channels = load_italian_channels()[:20]
+    results = []
+    
+    for channel in channels:
+        channel_name = channel["name"]
+        has_logo = channel_name in channel_logos
+        
+        results.append({
+            "channel_name": channel_name,
+            "has_logo": has_logo,
+            "logo_url": channel_logos.get(channel_name, "Non trovato")
+        })
+    
+    return jsonify({
+        "total_logos": len(channel_logos),
+        "channels_checked": len(results),
+        "results": results
     })
 
 @app.route('/<path:invalid_path>')
