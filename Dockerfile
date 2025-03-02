@@ -2,16 +2,15 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Installa le dipendenze
+# Copia prima solo i file necessari per le dipendenze
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia il codice dell'applicazione
-COPY app.py .
+# Copia esplicitamente il file JSON
+COPY canali_con_loghi_finale.json .
 
-# Espone la porta usata da Render (10000)
-ENV PORT=10000
-EXPOSE 10000
+# Poi copia il resto del codice
+COPY . .
 
-# Avvia l'applicazione
-CMD ["python", "app.py"]
+# Comando per avviare l'applicazione
+CMD ["gunicorn", "--config", "gunicorn_config.py", "app:app"]
