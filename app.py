@@ -291,10 +291,17 @@ def get_catalog_response(type, id, search, skip, genre=""):
         channels = [ch for ch in channels if search_norm in normalize_text(ch["name"])]
         logger.info(f"Trovati {len(channels)} canali per la ricerca '{search}'")
     
-    # Filtra per genere se specificato
+    # Filtra per genere se specificato (usando le linee guida ufficiali di Stremio)
     if genre:
         logger.info(f"Filtro canali per genere: {genre}")
-        channels = [ch for ch in channels if get_channel_genre(ch["name"]) == genre]
+        # Assegniamo il genere a ciascun canale e filtriamo
+        filtered_channels = []
+        for channel in channels:
+            channel_genre = get_channel_genre(channel["name"])
+            if channel_genre == genre:
+                filtered_channels.append(channel)
+        
+        channels = filtered_channels
         logger.info(f"Trovati {len(channels)} canali per il genere '{genre}'")
     
     # Ordina i canali per nome
@@ -308,8 +315,8 @@ def get_catalog_response(type, id, search, skip, genre=""):
     
     metas = []
     for channel in channels:
+        # Trova il genere e il logo appropriato per il canale
         channel_genre = get_channel_genre(channel["name"])
-        # Trova il logo appropriato per il canale
         logo_url = find_logo_for_channel(channel["name"])
         
         metas.append({
