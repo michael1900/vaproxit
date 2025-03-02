@@ -63,7 +63,7 @@ def find_logo_for_channel(channel_name):
         return channel_logos[channel_name]
     
     # Se non viene trovato un logo, restituisci un URL di placeholder
-    return f"https://via.placeholder.com/300x300/0000FF/FFFFFF?text={quote(channel_name)}"
+    return f"https://placehold.co/300x300?text={quote(channel_name)}&.jpg"
 
 # Funzione per caricare e filtrare i canali italiani da vavoo.to
 def load_italian_channels():
