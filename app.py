@@ -30,6 +30,7 @@ cache_timestamp = 0
 CACHE_DURATION = 3600  # 1 ora in secondi
 
 # Carica il file JSON dei loghi
+# Carica il file JSON dei loghi
 def load_logos():
     try:
         # Percorso al file JSON nella stessa directory dello script
@@ -38,42 +39,26 @@ def load_logos():
         with open(logos_file_path, 'r', encoding='utf-8') as file:
             logos_data = json.load(file)
         
-        # Crea un dizionario per un accesso più veloce
+        # Crea un dizionario senza normalizzare i nomi
         logos_dict = {}
         for channel in logos_data:
             if "name" in channel:
-                # Normalizza il nome del canale (rimuovi spazi extra, converti in minuscolo)
-                normalized_name = channel["name"].strip().lower()
-                logos_dict[normalized_name] = channel.get("logo", "")
+                # Usa il nome esatto del canale come chiave
+                logos_dict[channel["name"]] = channel.get("logo", "")
         
         return logos_dict
     except Exception as e:
         print(f"Errore nel caricamento dei loghi: {str(e)}")
         return {}
 
-# Carica i loghi all'avvio dell'applicazione
-channel_logos = load_logos()
-
-# Funzione per trovare il logo corrispondente a un canale
+# Funzione per trovare il logo corrispondente a un canale con confronto diretto
 def find_logo_for_channel(channel_name):
-    # Normalizza il nome del canale
-    normalized_name = channel_name.strip().lower()
+    # Cerca una corrispondenza esatta senza normalizzazione
+    if channel_name in channel_logos:
+        return channel_logos[channel_name]
     
-    # Cerca una corrispondenza esatta
-    if normalized_name in channel_logos:
-        return channel_logos[normalized_name]
-    
-    # Cerca corrispondenze parziali (un canale potrebbe avere il nome leggermente diverso)
-    for name, logo in channel_logos.items():
-        # Rimuovi i suffissi (6) o (7) per il confronto
-        base_name = ' '.join(normalized_name.split(' ')[:-1]) if '(' in normalized_name else normalized_name
-        base_logo_name = ' '.join(name.split(' ')[:-1]) if '(' in name else name
-        
-        if base_name == base_logo_name or base_name in name or name in base_name:
-            return logo
-    
-    # Restituisci un URL di placeholder se non è stato trovato alcun logo
-    return f"https://via.placeholder.com/300x300/0000FF/FFFFFF?text={quote(channel_name)}"
+    # Se non viene trovato un logo, restituisci un URL di placeholder
+    return f"https://via.placeholder.com/300x300/0000FF/FFFFFF?text={quote(channel_name)}&.png"
 
 # Funzione per caricare e filtrare i canali italiani da vavoo.to
 def load_italian_channels():
