@@ -27,7 +27,7 @@ DEFAULT_HEADERS = {
 # Cache dei canali
 channels_cache = []
 cache_timestamp = 0
-CACHE_DURATION = 3600  # 1 ora in secondi
+CACHE_DURATION = 600  # 10minuti
 
 # Carica il file JSON dei loghi
 def load_logos():
